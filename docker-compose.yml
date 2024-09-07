@@ -1,0 +1,120 @@
+version: '2.3'
+services:
+  db:
+    image: postgres:14
+    environment:
+      - POSTGRES_USER=odoo
+      - POSTGRES_PASSWORD=odoo16@2022      
+      - POSTGRES_DB=postgres
+      - PGDATA=/var/lib/postgresql/data/pgdata
+    restart: always             # run as a service
+    volumes:
+        - ./postgresql:/var/lib/postgresql/data
+
+  web:
+    image: odoo:16
+    user: root
+    depends_on:
+      - db
+    expose:
+      - "8069"
+    #ports:
+      #- "8069:8069"
+      #- "20016:8072" # live chat
+    tty: true
+    command: --
+    environment:
+      - HOST=db
+      - USER=odoo
+      - PASSWORD=odoo16@2022
+    volumes:
+      #- /etc/timezone:/etc/timezone:trt
+      #- /etc/localtime:/etc/localtime:trt
+      # - ./entrypoint.sh:/entrypoint.sh   # if you want to install additional Python packages, uncomment this line!
+      - ./addons:/mnt/extra-addons
+      - ./etc:/etc/odoo
+    restart: always             # run as a service
+
+
+  haproxy:
+    image: eeacms/haproxy
+    restart: always
+    depends_on:
+    - web
+    #ports:
+    #- "9002:5000"
+    #- "9003:1936"
+    environment:
+      BACKENDS: "web:8069"
+      DNS_ENABLED: "true"
+      LOG_LEVEL: "info"
+      BACKENDS_PORT: 9002
+      STATS_AUTH : admin:YbrS9eP4!j
+      TIMEOUT_SERVER: 180000
+      HTTPCHK: "GET /web/database/manager"
+      #LOGGING: :9002
+      #VIRTUAL_HOST: 
+      #LETSENCRYPT_HOST:
+      #VIRTUAL_PORT: 1936
+      #BACKEND_NAME: "web"
+      #FRONTEND_NAME: "db"
+      VIRTUAL_HOST : erp6.4th-erp.com
+      VIRTUAL_PORT : 5000
+      LETSENCRYPT_HOST : erp6.4th-erp.com
+      LETSENCRYPT_DNS_MODE : dns-01-challenge
+    volumes:
+      - /var/run/docker.sock:/tmp/docker.sock
+
+  pgadmin:
+    image: fenglc/pgadmin4
+    ports:
+      - 5050:5050
+    restart: always
+    links:
+      - db:db
+    environment:
+      DEFAULT_USER: admin
+      DEFAULT_PASSWORD: YbrS9eP4!j
+     # VIRTUAL_HOST: 
+     # LETSENCRYPT_HOST:
+     # VIRTUAL_PORT: 5050
+    volumes:
+      - ./pgadmin-data:/var/lib/pgadmin
+      #- /var/run/docker.sock:/tmp/docker.sock
+  nginx-proxy:
+    image: nginxproxy/nginx-proxy
+    ports:
+      - "80:80"
+      - "443:443"
+    restart: always
+    volumes:
+      - ./certs:/etc/nginx/certs
+      - ./vhost.d:/etc/nginx/vhost.d
+      - ./html:/usr/share/nginx/html
+      - /var/run/docker.sock:/tmp/docker.sock:ro
+
+
+  acme-companion:
+    image: nginxproxy/acme-companion
+    container_name: nginx-proxy-acme
+    volumes_from:
+      - nginx-proxy
+    restart: always
+    volumes:
+      - ./certs:/etc/nginx/certs:rw
+      - ./acme:/etc/acme.sh
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+
+
+  whoami:
+    image: jwilder/whoami
+    expose:
+      - "8000"
+    restart: always
+    environment:
+      - VIRTUAL_HOST=whoami.local
+      - VIRTUAL_PORT=8000
+networks:
+  default:
+    external:
+      name: docker
